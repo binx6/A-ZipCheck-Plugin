@@ -14,7 +14,7 @@
 
 ## Usage
 
-- [Zip4j](https://github.com/srikanth-lingala/zip4j):
+- [Zip4j](https://github.com/srikanth-lingala/zip4j)
 
 ## Examples
 
