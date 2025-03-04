@@ -1,7 +1,7 @@
 # ZipCheck-Plugin
 
-- 100% Pure Java
-- 100% Never Network
+- 100% Pure Java（纯Java）
+- 100% Never Network（完全本地实现）
 
 ## Features
 
