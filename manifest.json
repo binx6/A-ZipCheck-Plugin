@@ -1,0 +1,17 @@
+{
+  pluginSdkVersion: 2,
+
+  pluginID: "me.zipcheck.plugin",
+
+  versionCode: 1,
+
+  versionName: "v1.0",
+
+  name: "Zip完整性校验",
+
+  description: "2025-03-03 v1.0：\n操作其实很简单\n打开文本编辑器\n将完整路径粘贴在内部，长按它使用翻译并选择该插件即可\n请勿在私有目录操作！应先复制到公共目录！\n示例: /storage/emulated/0/Download/Test.zip\n\n• 具体用法详见插件管理的设置界面\nFor specific usage, please refer to the settings interface in plugin management. (manager → preference)",
+
+  mainPreference: "bin.mt.plugin.evaluate",
+
+  interfaces: ["analyze"]
+}
