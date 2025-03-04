@@ -39,6 +39,12 @@ The operation is actually very simple. Open the text editor, paste the complete 
 问：为什么选用Zip4j呢？有更好的方案啊
 - 答：还是那句话，受限。例如Apache commons compress，过不了编译，或许早期版本可以过编译，但考虑到一些CVE影响等等，还是用Zip4j以及Java Api，兼容范围够广，也不算太老旧。
 
+问：为什么不直接上架“插件中心”呢？
+- 答：插件中心说实话，审核到猴年马月，不如直接开源，供大家学习交流。
+
+问：你是MT作者Bin吗？
+- 答：我不是。请不要误解。Bin是这位[→](https://github.com/L-JINBIN)。
+
 ## License
 
 Licensed under the Anti 996 License, Version 1.0 (the "License");
