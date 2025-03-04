@@ -1,4 +1,4 @@
-# ZipCheck-Plugin
+# A-ZipCheck-Plugin
 
 - 100% Pure Java（纯Java）
 - 100% Never Network（完全本地实现）
@@ -49,7 +49,7 @@ The operation is actually very simple. Open the text editor, paste the complete 
 
 Licensed under the Anti 996 License, Version 1.0 (the "License");
 
-you may not use this "ZipCheck-Plugin" project except in compliance with the License.
+you may not use this "A-ZipCheck-Plugin" project except in compliance with the License.
 
 You may obtain a copy of the License at
 
