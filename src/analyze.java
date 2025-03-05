@@ -47,7 +47,7 @@ public class analyze extends BaseTranslationEngine {
     @NonNull
     @Override
     public List<String> loadTargetLanguages(String sourceLanguage) {
-        return Arrays.asList("badcheck", "rwcheck", "deepcheck", "crccheck", "commoncheck", "bombcheck");
+        return Arrays.asList("badcheck", "rwcheck", "deepcheck", "crccheck", "commoncheck", "bombcheck", "adlercalc");
     }
 
     @NonNull
@@ -63,11 +63,13 @@ public class analyze extends BaseTranslationEngine {
             case "deepcheck":
                 return "深度探测";
             case "crccheck":
-                return "CRC校验测试";
+                return "CRC32校验测试";
             case "commoncheck":
                 return "整体标基测试";
             case "bombcheck":
                 return "Bomb检测";
+            case "adlercalc":
+                return "Adler32计算";
         }
         return "???";
     }
@@ -95,7 +97,7 @@ public class analyze extends BaseTranslationEngine {
 
             java.util.zip.ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {            
-            // NOTE :下方注释为条目测试，由于比较耗时故不启用。
+            // NOTE: 下方注释为条目测试，由于比较耗时故不启用。
             // String result = entry.getName();
             long size = entry.getSize();
                 // 处理每个文件并跳过文件夹
@@ -109,7 +111,7 @@ public class analyze extends BaseTranslationEngine {
                 } else {
                     continue;
                 }
-                // NOTE :添加条目。
+                // NOTE: 添加条目。
                 // results.add(result);
                 /*
                 * 初期测试流所用，不用管它
@@ -124,45 +126,53 @@ public class analyze extends BaseTranslationEngine {
             }
                 zis.closeEntry();
             }
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
             return "无法打开ZIP文件，原因: \n" + e.toString();
         }
-        // NOTE :若启用可获取ZIP内部除文件夹外所有文件大小
+        // NOTE: 若启用可获取ZIP内部除文件夹外所有文件大小
         // return String.join(",\n", results);
         return "未检测到损坏。";
     }
 
-    @NonNull
+    @SuppressWarnings("unchecked")
     protected String various(String rwcheck) {
-        String zipFilePath = rwcheck;
-        String outputFolder = "/storage/emulated/0/Download/";
+    String zipFilePath = rwcheck;
+    java.util.zip.ZipFile zipFile = null;
+    try {
+        zipFile = new java.util.zip.ZipFile(zipFilePath);
+        Enumeration<? extends java.util.zip.ZipEntry> entries = zipFile.entries();
+        StringBuilder contentBuilder = new StringBuilder();
 
-        try {
-        java.util.zip.ZipFile zipFile = new java.util.zip.ZipFile(zipFilePath);
-            for (ZipEntry entry : Collections.list(zipFile.entries())) {
-                // 跳过目录
-                if (entry.isDirectory() || entry.getName().endsWith("/")) {
-                    continue;
-                }
-                if (entry.getSize() < 0) {
-                    String outputFile = outputFolder + File.separator + entry.getName();
-                    try {
-                    FileInputStream fis = new FileInputStream(outputFile);
-                    FileOutputStream fos = new FileOutputStream(outputFolder);
-                        byte[] buffer = new byte[1024];
-                        int length;
-                        while ((length = fis.read(buffer)) >= 0) {
-                            fos.write(buffer, 0, length);
-                        }
-                    } catch (Exception e) {
-                        return "操作失败，原因: \n" + e.toString();
-                    }                   
-                }                
+        while (entries.hasMoreElements()) {
+            java.util.zip.ZipEntry entry = entries.nextElement();
+            if (entry.isDirectory() || entry.getName().endsWith("/")) {
+                continue; // 跳过目录
             }
-        } catch (IOException e) {
-            return "无法读取ZIP文件，原因: \n" + e.toString();
+
+            InputStream is = null;
+            BufferedReader reader = null;
+            try {
+                is = zipFile.getInputStream(entry);
+                reader = new BufferedReader(new InputStreamReader(is));
+                String line;
+                while ((line = reader.readLine()) != null) {
+
+                }
+            } catch (Exception e) {
+                return "读取文件内容失败：" + e.toString();
+            } finally {
+                if (reader != null) try { reader.close(); } catch (IOException ignored) {}
+                if (is != null) try { is.close(); } catch (IOException ignored) {}
+            }
         }
         return "读取成功！";
+    } catch (IOException e) {
+        return "无法读取ZIP文件，原因: \n" + e.toString();
+    } finally {
+        if (zipFile != null) {
+            try { zipFile.close(); } catch (IOException ignored) {}
+        }
+    }
     }
 
     public boolean isZipValid(String zipFilePath) throws IOException {
@@ -177,7 +187,7 @@ public class analyze extends BaseTranslationEngine {
             for (FileHeader header : fileHeaders) {
                 try {
                 ZipInputStream zis = zipFile.getInputStream(header);
-                    byte[] buffer = new byte[4096];
+                    byte[] buffer = new byte[8192];
                     while (zis.read(buffer) != -1) {
 
                     }
@@ -221,28 +231,6 @@ public class analyze extends BaseTranslationEngine {
         return false;
     }
     }
-
-    /*
-    public static int[] countFilesAndFoldersInZip(String zipFilePath) throws IOException {
-    try {
-        ZipFile zipFile = new ZipFile(zipFilePath);
-        List<FileHeader> fileHeaders = zipFile.getFileHeaders();
-        int fileCount = 0;
-        int folderCount = 0;
-
-        for (FileHeader header : fileHeaders) {
-            if (header.isDirectory()) {
-                folderCount++;
-            } else {
-                fileCount++;
-            }
-        }
-        return new int[]{fileCount, folderCount};
-    } catch (ZipException e) {
-        throw new IOException(e);
-    }
-    }
-    */
 
     public static int[] countFilesAndFoldersInZip(String zipFilePath) throws IOException {
         try {
@@ -468,18 +456,40 @@ public class analyze extends BaseTranslationEngine {
         return false;
     }
 
+    @NonNull
     public String bombcheck(String bomb) {
         String zipFilePath = bomb;
         try {
             if (isZipBomb(zipFilePath)) {
                 return "Zip Bomb! The size of the file extracted from the ZIP package is too large.";
             } else {
-                return "Security.";
+                return "It's Security.";
             }
         } catch (ZipException e) {
-            e.toString();
+            return e.toString();
         }
-        return "";
+    }
+
+    @NonNull
+    public String adlercalc(String fileadler) {
+        String zipFilePath = fileadler;
+        try {
+        FileInputStream fis = new FileInputStream(zipFilePath);
+            Adler32 adler32 = new Adler32();
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                adler32.update(buffer, 0, bytesRead);
+            }
+
+            long checksumValue = adler32.getValue();
+            String checksumHex = Long.toHexString(checksumValue);
+
+            return "Adler32校验值（Hex）: " + checksumHex;
+        } catch (IOException e) {
+            return e.toString();
+        }
     }
 
     @NonNull
@@ -496,8 +506,10 @@ public class analyze extends BaseTranslationEngine {
                 return crccheck(text);
             case "commoncheck":
                 return commoncheck(text);
-            default:
+            case "bombcheck":
                 return bombcheck(text);
+            default:
+                return adlercalc(text);
         }
     }
 }
