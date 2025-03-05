@@ -28,6 +28,9 @@ The operation is actually very simple. Open the text editor, paste the complete 
 
 ## FAQ
 
+问：为什么有的文件使用“损坏检测”结果无误，而其它功能相继报错呢？
+- 答：首先这跟实现原理有关，“损坏检测”是不经过严格的zip api检查的，目地是为了最大限度的读取内部情况，换而言之，即使zip不标准或动过魔数的情况下，“损坏检测”也可能还会继续生效。其次，结果无误不一定代表真的没有任何问题，也可能找不到Central Dir呢，因为它没有经过打开检查只是进行内部检查。总之，请不要把它当作ZArchiver Pro中的“Test”功能来使用！目前还比较简陋没能实现到那种程度，仅供初步参考。
+
 问：为什么不使用Java Nio Api？
 - 答：不是不想用，而是受限于MT的classes.jar，以及考虑到Android8以下的用户，虽然可以自己魔改替换掉，但为了大部分用户兼容着想，还是不用。
 
