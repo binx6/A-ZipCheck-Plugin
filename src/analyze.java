@@ -14,6 +14,8 @@ import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.io.inputstream.ZipInputStream;
 import net.lingala.zip4j.model.FileHeader;
 
+import me.zipcheck.plugin.zipcenop;
+
 public class analyze extends BaseTranslationEngine {
     private static final String[] units = new String[]{"B","KiB","MiB","GiB","TiB"};
     // 没有zip文件注释时候的目录结束符的偏移量
@@ -47,7 +49,7 @@ public class analyze extends BaseTranslationEngine {
     @NonNull
     @Override
     public List<String> loadTargetLanguages(String sourceLanguage) {
-        return Arrays.asList("badcheck", "rwcheck", "deepcheck", "crccheck", "commoncheck", "bombcheck", "adlercalc");
+        return Arrays.asList("badcheck", "rwcheck", "deepcheck", "crccheck", "commoncheck", "bombcheck", "adlercalc", "fakefixer");
     }
 
     @NonNull
@@ -70,6 +72,8 @@ public class analyze extends BaseTranslationEngine {
                 return "Bomb检测";
             case "adlercalc":
                 return "Adler32计算";
+            case "fakefixer":
+                return "ZIP伪加密修复";
         }
         return "???";
     }
@@ -493,6 +497,17 @@ public class analyze extends BaseTranslationEngine {
     }
 
     @NonNull
+    public String fakefixer(String fakeEnc) {
+        zipcenop ZipCenOp = new zipcenop();
+        try {
+            ZipCenOp.repair(fakeEnc);
+        } catch (IOException e) {
+            return e.toString();
+        }
+        return "修复完毕！请自行查看当前所选ZIP。";
+    }
+
+    @NonNull
     @Override
     public String translate(String text, String sourceLanguage, String targetLanguage) {
         switch (targetLanguage) {
@@ -508,8 +523,10 @@ public class analyze extends BaseTranslationEngine {
                 return commoncheck(text);
             case "bombcheck":
                 return bombcheck(text);
-            default:
+            case "adlercalc":
                 return adlercalc(text);
+            default:
+                return fakefixer(text);
         }
     }
 }

@@ -11,7 +11,7 @@
 
   description: "• 具体用法详见插件管理的设置界面\nFor specific usage, please refer to the settings interface in plugin management. (manager → preference)",
 
-  mainPreference: "bin.mt.plugin.evaluate",
+  mainPreference: "me.zipcheck.plugin.evaluate",
 
   interfaces: ["analyze"]
 }
