@@ -14,10 +14,18 @@ import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.io.inputstream.ZipInputStream;
 import net.lingala.zip4j.model.FileHeader;
 
-import me.zipcheck.plugin.zipcenop;
+import static me.zipcheck.plugin.zipcenop.repair;
 
 public class analyze extends BaseTranslationEngine {
     private static final String[] units = new String[]{"B","KiB","MiB","GiB","TiB"};
+    private static final Object CACHE_LOCK = new Object();
+    private static String lastCachedZipPath = null;
+    private static int[] lastCachedCounts = null;
+    private static boolean lastlsValid;
+    private static boolean lastlsEncrypted;
+    private static boolean lastlsSplit;
+    private static int[] lastCounts;
+    private static String lastResultString= null;
     // 没有zip文件注释时候的目录结束符的偏移量
     private static final int RawEndOffset = 22;
     // 0x06054b50占4个字节
@@ -95,19 +103,25 @@ public class analyze extends BaseTranslationEngine {
     List<String> results = new ArrayList<>();
     // long totalFileSize = 0;
     try {
-    // NOTE: 此处不用ZipFile是因为不需要那么严格的判断，可最大程度的获取内部文件信息。
+    // NOTE 此处不用ZipFile是因为不需要那么严格的判断，可最大程度的获取内部文件信息。
     FileInputStream fis = new FileInputStream(zipFilePath);
         java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(fis);
 
             java.util.zip.ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {            
-            // NOTE: 下方注释为条目测试，由于比较耗时故不启用。
-            // String result = entry.getName();
+            // 下方注释为条目测试，由于比较耗时故不启用。
+            // NOTE 请注意！条目测试前应先getCanonicalFile。
+            /* 
+            * String result = entry.getName();
+            * if (result.contains("../")) {
+            * continue;
+            * }
+            */
             long size = entry.getSize();
                 // 处理每个文件并跳过文件夹
                 if (!entry.isDirectory()) {
                     // 读取文件内容
-                    byte[] buffer = new byte[10240];
+                    byte[] buffer = new byte[16384];
                     int len;
                     while ((len = zis.read(buffer)) != -1) {
                     // totalFileSize += len;
@@ -115,7 +129,7 @@ public class analyze extends BaseTranslationEngine {
                 } else {
                     continue;
                 }
-                // NOTE: 添加条目。
+                // NOTE 添加条目。
                 // results.add(result);
                 /*
                 * 初期测试流所用，不用管它
@@ -133,7 +147,7 @@ public class analyze extends BaseTranslationEngine {
         } catch (IOException | IllegalArgumentException e) {
             return "无法打开ZIP文件，原因: \n" + e.toString();
         }
-        // NOTE: 若启用可获取ZIP内部除文件夹外所有文件大小
+        // NOTE 若启用可获取ZIP内部除文件夹外所有文件大小
         // return String.join(",\n", results);
         return "未检测到损坏。";
     }
@@ -149,7 +163,7 @@ public class analyze extends BaseTranslationEngine {
 
         while (entries.hasMoreElements()) {
             java.util.zip.ZipEntry entry = entries.nextElement();
-            if (entry.isDirectory() || entry.getName().endsWith("/")) {
+            if (entry.isDirectory() || entry.getName().endsWith(File.separator)) {
                 continue; // 跳过目录
             }
 
@@ -236,44 +250,61 @@ public class analyze extends BaseTranslationEngine {
     }
     }
 
+    @SuppressWarnings("unchecked")
     public static int[] countFilesAndFoldersInZip(String zipFilePath) throws IOException {
-        try {
+    synchronized (CACHE_LOCK) {
+        // NOTE str.equals("abc") 和 "abc".equals(str) 的区别，后者写法避免空指针
+        if (zipFilePath.equals(lastCachedZipPath)) {
+            return Arrays.copyOf(lastCachedCounts, lastCachedCounts.length);
+        }
+    }
+
+    try {
         ZipFile zipFile = new ZipFile(zipFilePath);
         zipFile.setRunInThread(true);
-            List<FileHeader> fileHeaders = zipFile.getFileHeaders();
-            
-            // 根据CPU核心数创建线程池
-            int threadCount = Runtime.getRuntime().availableProcessors();
-            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-            
-            // 分割任务列表
-            List<List<FileHeader>> partitions = partitionList(fileHeaders, threadCount);
-            
-            // 提交任务并获取Future
-            List<Future<int[]>> futures = new ArrayList<>();
-            for (List<FileHeader> partition : partitions) {
-                futures.add(executor.submit(new FileCounterTask(partition)));
-            }
+        List<FileHeader> fileHeaders = zipFile.getFileHeaders();
 
-            // 合并结果
-            int totalFiles = 0;
-            int totalFolders = 0;
-            for (Future<int[]> future : futures) {
-                try {
-                    int[] partial = future.get();
-                    totalFiles += partial[0];
-                    totalFolders += partial[1];
-                } catch (InterruptedException | ExecutionException e) {
-                    executor.shutdownNow();
-                    throw new IOException("Task execution failed", e);
-                }
-            }
-            
-            executor.shutdown();
-            return new int[]{totalFiles, totalFolders};
-        } catch (ZipException e) {
-            throw new IOException(e);
+        // 根据CPU核心数创建线程池
+        int threadCount = Runtime.getRuntime().availableProcessors();
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        
+        // 分割任务列表
+        List<List<FileHeader>> partitions = partitionList(fileHeaders, threadCount);
+        
+        // 提交任务并获取Future
+        List<Future<int[]>> futures = new ArrayList<>();
+        for (List<FileHeader> partition : partitions) {
+            futures.add(executor.submit(new FileCounterTask(partition)));
         }
+
+        // 合并结果
+        int totalFiles = 0;
+        // int totalFolders = 0;
+        for (Future<int[]> future : futures) {
+            try {
+                int[] partial = future.get();
+                totalFiles += partial[0];
+                // totalFolders += partial[1];
+            } catch (InterruptedException | ExecutionException e) {
+                executor.shutdownNow();
+                throw new IOException("Task execution failed", e);
+            }
+        }
+
+        executor.shutdown();
+
+        // int[] result = new int[]{totalFiles, totalFolders};
+        int[] result = new int[]{totalFiles};
+
+        synchronized (CACHE_LOCK) {
+            lastCachedZipPath = zipFilePath;
+            lastCachedCounts = Arrays.copyOf(result, result.length);
+        }
+
+        return result;
+    } catch (ZipException e) {
+        throw new IOException(e);
+    }
     }
 
     // 分割
@@ -303,32 +334,72 @@ public class analyze extends BaseTranslationEngine {
         @Override
         public int[] call() {
             int files = 0;
-            int folders = 0;
+            // int folders = 0;
             for (FileHeader header : headers) {
                 if (header.isDirectory()) {
-                    folders++;
+                    // folders++;
+                    continue;
                 } else {
                     files++;
                 }
             }
-            return new int[]{files, folders};
+            // return new int[]{files, folders};
+            return new int[]{files};
         }
     }
 
-    @NonNull
+    public String otherchecks(String checks) {
+    try {
+        ZipFile zipFile = new ZipFile(checks);
+        List<FileHeader> headers = zipFile.getFileHeaders();
+
+        for (FileHeader header : headers) {
+            int versionMadeBy = header.getVersionMadeBy();
+            int hostSystem = (versionMadeBy >> 8) & 0xFF;
+            int zipSpecVersion = versionMadeBy & 0xFF;
+            /*
+            * 一言两语说不清，参见：
+            * https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
+            * https://www.cnblogs.com/li-sx/p/17531186.html
+            */
+            return "宿主系统: " + hostSystem + "\n规范版本: " + zipSpecVersion + "\n头偏移量: " + header.getOffsetLocalHeader() + "\n注释: " + (header.getFileComment() != null ? header.getFileComment() : "无");
+        }
+    } catch (ZipException e){
+        return e.toString();
+    }
+        return "";
+    }
+
+    @SuppressWarnings("all")
     private String deepcheck(String check) {
         String zipPath = check;
+        synchronized (CACHE_LOCK) {
+        // NOTE Objects.equals可直接避免空指针问题，但是注意它也有个坑，会将基本数据类型自动装箱，比较前应多留意类型问题；不过此处无影响，只是为了兼容低版本而不启用。
+        // if (Objects.equals(zipPath, lastCachedZipPath)) {
+        if (zipPath.equals(lastCachedZipPath)) {
+            return lastResultString;
+        }
+    }
 
-        try {
-            // 完整性检查
-            boolean isValid = isZipValid(zipPath);
-            // 加密状态检查
-            boolean isEncrypted = isZipEncrypted(zipPath);
-            // 拆分文件检查
-            boolean isSplit = isZipSplit(zipPath);
-            // 文件/夹计数
-            int[] counts = countFilesAndFoldersInZip(zipPath);
-            return "ZIP完整性状态: " + (isValid ? "✔ 正常\n" : "✖ 已损坏或加密\n") + "加密保护状态: " + (isEncrypted ? "🔒 已加密\n" : "🔓 未加密\n") + "分卷压缩状态: " + (isSplit ? "📦 拆分文件\n" : "📁 未拆分\n") + "文件数: " + String.valueOf(counts[0]).concat("\n") + "文件夹数: " + String.valueOf(counts[1]);
+    try {
+        boolean isValid = isZipValid(zipPath);
+        boolean isEncrypted = isZipEncrypted(zipPath);
+        boolean isSplit = isZipSplit(zipPath);
+        int[] counts = countFilesAndFoldersInZip(zipPath);
+
+        String result = "ZIP完整性状态: " + (isValid ? "✔ 正常\n" : "✖ 已损坏或加密\n") + "加密保护状态: " + (isEncrypted ? "🔒 已加密\n" : "🔓 未加密\n") + "分卷压缩状态: " + (isSplit ? "📦 拆分文件\n" : "📁 未拆分\n") + "文件数: " + String.valueOf(counts[0]).concat("\n") + otherchecks(check);
+        // "文件夹数: " + String.valueOf(counts[1])
+
+        synchronized (CACHE_LOCK) {
+            lastCachedZipPath = zipPath;
+            boolean lastIsValid = isValid;
+            boolean lastIsEncrypted = isEncrypted;
+            boolean lastIsSplit = isSplit;
+            lastCounts = counts;
+            lastResultString = result;
+        }
+
+        return result;
         } catch (IOException e) {
             return "检查失败，原因: " + e.getMessage();
         }
@@ -443,6 +514,7 @@ public class analyze extends BaseTranslationEngine {
 
     @SuppressWarnings("unchecked")
     public static boolean isZipBomb(String zipFilePath) throws ZipException {
+        // TODO 后续打算攻克“42.zip”难题，目前拿不出主意。
         ZipFile zipFile = new ZipFile(zipFilePath);
         List<FileHeader> fileHeaders = zipFile.getFileHeaders();
         // 检查文件数量是否超过允许的最大值
@@ -498,9 +570,9 @@ public class analyze extends BaseTranslationEngine {
 
     @NonNull
     public String fakefixer(String fakeEnc) {
-        zipcenop ZipCenOp = new zipcenop();
+        // XXX 请勿用于真加密的zip，而应先确保它是被伪加密的，我懒得写判断了。
         try {
-            ZipCenOp.repair(fakeEnc);
+            repair(fakeEnc);
         } catch (IOException e) {
             return e.toString();
         }
