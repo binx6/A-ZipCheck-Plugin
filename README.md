@@ -60,3 +60,7 @@ you may not use this "A-ZipCheck-Plugin" project except in compliance with the L
 You may obtain a copy of the License at
 
 https://github.com/996icu/996.ICU/blob/master/LICENSE
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=binx6/A-ZipCheck-Plugin&type=date&legend=top-left)](https://www.star-history.com/#binx6/A-ZipCheck-Plugin&type=date&legend=top-left)
